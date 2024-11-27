@@ -1,11 +1,18 @@
+from flask import Flask, request, jsonify
 import os
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 from PyPDF2 import PdfReader
-import streamlit as st
 import glob
 import requests
+
+app = Flask(__name__)
+
+# Global variables
+model = SentenceTransformer('all-MiniLM-L6-v2')
+index = None
+combined_chunks = []
 
 # Function to load and chunk data from multiple text files
 def load_and_chunk_data(file_paths, chunk_size=500):
@@ -40,7 +47,6 @@ def load_combined_knowledge_base(text_file_paths, pdf_file_paths, chunk_size=500
 
 # Function to create embeddings for the text chunks
 def create_embeddings(chunks):
-    model = SentenceTransformer('all-MiniLM-L6-v2')  # Use an appropriate model
     embeddings = model.encode(chunks)
     return embeddings
 
@@ -52,7 +58,7 @@ def build_faiss_index(embeddings):
     return index
 
 # Function to search the FAISS index
-def search_faiss(query, model, index, chunks, top_k=4):
+def search_faiss(query, index, chunks, top_k=4):
     query_embedding = model.encode([query])
     distances, indices = index.search(np.array(query_embedding), top_k)
     return [chunks[i] for i in indices[0]]
@@ -80,46 +86,36 @@ def query_llama_with_context(user_query, top_chunks):
     
     return response.json()
 
-# Dynamically load files from a folder
-def load_files_from_directory(directory, file_type='txt'):
-    file_paths = glob.glob(os.path.join(directory, f"*.{file_type}"))
-    return file_paths
+# Custom initialization function
+def initialize_resources():
+    global index, combined_chunks
+    text_file_paths = glob.glob('data_summary/*.txt')
+    pdf_file_paths = glob.glob('data_summary/*.pdf')
+    combined_chunks = load_combined_knowledge_base(text_file_paths, pdf_file_paths)
+    embeddings = create_embeddings(combined_chunks)
+    index = build_faiss_index(embeddings)
 
-# Streamlit app definition
-def run_app():
-    st.title("Lex-AI-Commercial")
+# Define the query endpoint
+@app.route('/query', methods=['POST'])
+def handle_query():
+    # Ensure the request is in JSON format
+    if request.content_type != 'application/json':
+        return jsonify({"error": "Invalid Content-Type. Expected 'application/json'"}), 415
+    
+    user_query = request.json.get("query")
+    if not user_query:
+        return jsonify({"error": "Query is required"}), 400
 
-    # Dynamically load text and PDF files from the folder (adjust the paths as needed)
-    text_file_paths = load_files_from_directory('data_summary', 'txt')
-    pdf_file_paths = load_files_from_directory('data_summary', 'pdf')
+    try:
+        # Retrieve relevant chunks based on the query
+        top_chunks = search_faiss(user_query, index, combined_chunks, top_k=4)
+        # Query the LLaMA model with the relevant context
+        analysis_result = query_llama_with_context(user_query, top_chunks)
+        # analysis_result = analysis_result.json()
+        return jsonify({"query": user_query, "result": analysis_result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Display a loading spinner while the app is processing files
-    with st.spinner("Processing files..."):
-        # Load combined knowledge base
-        combined_chunks = load_combined_knowledge_base(text_file_paths, pdf_file_paths)
-        
-        # Create embeddings for the combined knowledge base
-        embeddings = create_embeddings(combined_chunks)
-        
-        # Build the FAISS index
-        index = build_faiss_index(embeddings)
-
-    st.success("Files loaded and index built successfully!")
-
-    # Query interface
-    query = st.text_input("Enter your query:")
-    if query:
-        with st.spinner("Searching for relevant information..."):
-            top_chunks = search_faiss(query, SentenceTransformer('all-MiniLM-L6-v2'), index, combined_chunks, top_k=4)
-            
-            # Query the external LLaMA model
-            with st.spinner("Generating case analysis..."):
-                analysis_result = query_llama_with_context(query, top_chunks)
-            
-            # Display the analysis result
-            st.write("**Case Analysis by Associate Lawyer**")
-            st.write(analysis_result)
-
-# Run the app
 if __name__ == "__main__":
-    run_app()
+    initialize_resources()  # Initialize resources before starting the server
+    app.run(debug=True)

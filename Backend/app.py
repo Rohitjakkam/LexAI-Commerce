@@ -57,7 +57,7 @@ def search_faiss(query, model, index, chunks, top_k=4):
     distances, indices = index.search(np.array(query_embedding), top_k)
     return [chunks[i] for i in indices[0]]
 
-# Function to query the LLaMA model with context and format the response
+# Function to query the LLaMA model with context
 def query_llama_with_context(user_query, top_chunks):
     context = " ".join(top_chunks)  # Combine the top chunks into a single string
     prompt = f"""
@@ -77,42 +77,8 @@ def query_llama_with_context(user_query, top_chunks):
     API_URL = "https://api-inference.huggingface.co/models/meta-llama/Llama-3.2-1B"
     headers = {"Authorization": "Bearer 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"}
     response = requests.post(API_URL, headers=headers, json={"inputs": prompt})
-
-    # Inspect the response structure
-    try:
-        response_data = response.json()
-        if isinstance(response_data, list):
-            # If the response is a list, extract the first item
-            result = response_data[0].get("generated_text", "No response received")
-        elif isinstance(response_data, dict):
-            # If the response is a dictionary, extract the generated text
-            result = response_data.get("generated_text", "No response received")
-        else:
-            result = "Unexpected response format."
-    except Exception as e:
-        result = f"Error processing response: {e}"
-
-    # Format the response
-    formatted_result = f"""
-    **Case Analysis by Associate Lawyer**
-
-    **1. Key Points:** 
-    {result.split('Key Points:')[1].split('Key Defense Strategies:')[0].strip()}
-
-    **2. Key Defense Strategies:** 
-    {result.split('Key Defense Strategies:')[1].split('Supporting Arguments:')[0].strip()}
-
-    **3. Supporting Arguments:** 
-    {result.split('Supporting Arguments:')[1].split('Relevant Case Precedents:')[0].strip()}
-
-    **4. Relevant Case Precedents:** 
-    {result.split('Relevant Case Precedents:')[1].split('Recommendations for Senior Counsel:')[0].strip()}
-
-    **5. Recommendations for Senior Counsel:** 
-    {result.split('Recommendations for Senior Counsel:')[1].strip()}
-    """
-    return formatted_result
-
+    
+    return response.json()
 
 # Dynamically load files from a folder
 def load_files_from_directory(directory, file_type='txt'):
@@ -151,7 +117,8 @@ def run_app():
                 analysis_result = query_llama_with_context(query, top_chunks)
             
             # Display the analysis result
-            st.markdown(analysis_result, unsafe_allow_html=True)
+            st.write("**Case Analysis by Associate Lawyer**")
+            st.write(analysis_result)
 
 # Run the app
 if __name__ == "__main__":
