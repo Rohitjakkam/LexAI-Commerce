@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search API Example</title>
+    <script>
+        async function handleSearch(event) {
+            event.preventDefault(); // Prevent the form from refreshing the page
+
+            // Get the query from the input field
+            const queryInput = document.getElementById("searchQuery");
+            const query = queryInput.value;
+
+            // API details
+            const url = "http://127.0.0.1:5000/query";
+            const headers = { "Content-Type": "application/json" };
+            const data = { query: query };
+
+            try {
+                // Send a POST request to the API
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: headers,
+                    body: JSON.stringify(data),
+                });
+
+                // Handle the API response
+                if (response.ok) {
+                    const result = await response.json();
+                    document.getElementById("responseOutput").textContent = JSON.stringify(result, null, 2);
+                } else {
+                    document.getElementById("responseOutput").textContent = `Error: ${response.statusText}`;
+                }
+            } catch (error) {
+                // Handle errors in the request
+                document.getElementById("responseOutput").textContent = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Search API Example</h1>
+    <form onsubmit="handleSearch(event)">
+        <input type="text" id="searchQuery" placeholder="Enter your query" required />
+        <button type="submit">Search</button>
+    </form>
+    <h3>API Response:</h3>
+    <pre id="responseOutput" style="background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow: auto;height: 300px;width: 800px;"></pre>
+</body>
+</html>
